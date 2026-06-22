@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WindowSync Simple Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            padding: 2rem;
+        }
+        button {
+            background: #FF6B35;
+            color: #fff;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 0.5rem;
+        }
+        #output {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            font-family: monospace;
+            min-height: 200px;
+        }
+    </style>
+</head>
+<body>
+    <h1>WindowSync Simple Test</h1>
+    <button id="btnTest">Click Me</button>
+    <button id="btnWindow">Open Window</button>
+    <div id="output"></div>
+
+    <script type="module">
+        import WindowSync from './src/WindowSync.js';
+        
+        const output = document.getElementById('output');
+        function log(msg) {
+            output.innerHTML += msg + '<br>';
+            console.log(msg);
+        }
+        
+        log('Script loaded');
+        
+        try {
+            const sync = new WindowSync({ syncKey: 'simple_test' });
+            log('WindowSync created');
+            
+            sync.init({ test: true });
+            log('WindowSync initialized. ID: ' + sync.getId().slice(-8));
+            
+            document.getElementById('btnTest').addEventListener('click', () => {
+                log('Button clicked!');
+                sync.setState('clickTime', Date.now());
+                log('State set. Windows: ' + sync.getWindowCount());
+            });
+            
+            document.getElementById('btnWindow').addEventListener('click', () => {
+                log('Opening window...');
+                window.open(window.location.href, '_blank', 'width=400,height=400');
+            });
+            
+            sync.on('windowAdded', () => {
+                log('Window added! Total: ' + sync.getWindowCount());
+            });
+            
+        } catch (err) {
+            log('ERROR: ' + err.message);
+            console.error(err);
+        }
+    </script>
+</body>
+</html>

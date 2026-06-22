@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WindowSync - Multi-Window Energy Spheres</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        .ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: rgba(255,255,255,0.7);
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        .ui button {
+            pointer-events: auto;
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-right: 5px;
+        }
+        
+        .ui button:hover {
+            background: rgba(255,255,255,0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <div>Windows: <span id="winCount">1</span> | Window ID: <span id="winId">-</span></div>
+        <button id="addWin">Add Window</button>
+        <button id="clear">Clear Storage</button>
+    </div>
+    <canvas id="canvas"></canvas>
+
+    <script src="../dist/window-sync.js"></script>
+    <script>
+        const sync = new WindowSync({
+            syncKey: 'window_sync_spheres',
+            debug: false
+        });
+        
+        sync.init({
+            type: 'sphere-window'
+        });
+        
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+        
+        function getAllWindows() {
+            return sync.getWindows();
+        }
+        
+        function getWindowColor(index) {
+            const hue = (index * 137.5) % 360;
+            return `hsl(${hue}, 80%, 60%)`;
+        }
+        
+        // Energy particle that flows between spheres
+        class EnergyParticle {
+            constructor(startX, startY, endX, endY, color, speed, size) {
+                this.startX = startX;
+                this.startY = startY;
+                this.endX = endX;
+                this.endY = endY;
+                this.color = color;
+                this.progress = 0;
+                this.speed = speed;
+                this.size = size;
+                this.trail = [];
+            }
+            
+            update() {
+                const x = this.startX + (this.endX - this.startX) * this.progress;
+                const y = this.startY + (this.endY - this.startY) * this.progress;
+                this.trail.push({x, y});
+                if (this.trail.length > 15) this.trail.shift();
+                
+                this.progress += this.speed;
+                return this.progress >= 1;
+            }
+            
+            draw(ctx) {
+                for (let i = 0; i < this.trail.length; i++) {
+                    const alpha = (i / this.trail.length) * 0.6;
+                    const size = this.size * (i / this.trail.length);
+                    
+                    ctx.globalAlpha = alpha;
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.trail[i].x, this.trail[i].y, size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                const x = this.startX + (this.endX - this.startX) * this.progress;
+                const y = this.startY + (this.endY - this.startY) * this.progress;
+                
+                ctx.globalAlpha = 1;
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(x, y, this.size * 1.5, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        // Particle system for each sphere
+        class SphereParticles {
+            constructor(x, y, color, radius) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.radius = radius;
+                this.particles = [];
+                
+                for (let i = 0; i < 50; i++) {
+                    this.particles.push(this.createParticle());
+                }
+            }
+            
+            createParticle() {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * this.radius * 1.5;
+                return {
+                    angle: angle,
+                    dist: dist,
+                    speed: 0.02 + Math.random() * 0.03,
+                    size: 1 + Math.random() * 2,
+                    opacity: 0.3 + Math.random() * 0.7
+                };
+            }
+            
+            update(centerX, centerY) {
+                this.x = centerX;
+                this.y = centerY;
+                
+                this.particles.forEach(p => {
+                    p.angle += p.speed;
+                    p.dist += Math.sin(p.angle * 3) * 0.5;
+                    
+                    if (p.dist > this.radius * 2) p.dist = this.radius * 0.5;
+                    if (p.dist < this.radius * 0.3) p.dist = this.radius * 1.5;
+                });
+            }
+            
+            draw(ctx) {
+                this.particles.forEach(p => {
+                    const x = this.x + Math.cos(p.angle) * p.dist;
+                    const y = this.y + Math.sin(p.angle) * p.dist;
+                    
+                    ctx.globalAlpha = p.opacity * 0.6;
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(x, y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        let energyParticles = [];
+        let sphereParticleSystems = {};
+        let time = 0;
+        
+        function animate() {
+            time += 0.016;
+            
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+            
+            const windows = getAllWindows();
+            const thisWindow = sync.getThisWindow();
+            
+            if (!thisWindow) {
+                requestAnimationFrame(animate);
+                return;
+            }
+            
+            const offsetX = -window.screenX;
+            const offsetY = -window.screenY;
+            
+            // Generate energy particles between spheres
+            for (let i = 0; i < windows.length; i++) {
+                for (let j = i + 1; j < windows.length; j++) {
+                    const win1 = windows[i];
+                    const win2 = windows[j];
+                    
+                    const x1 = win1.shape.x + win1.shape.width / 2 + offsetX;
+                    const y1 = win1.shape.y + win1.shape.height / 2 + offsetY;
+                    const x2 = win2.shape.x + win2.shape.width / 2 + offsetX;
+                    const y2 = win2.shape.y + win2.shape.height / 2 + offsetY;
+                    
+                    if (Math.random() < 0.05) {
+                        const color1 = getWindowColor(i);
+                        const color2 = getWindowColor(j);
+                        
+                        energyParticles.push(new EnergyParticle(
+                            x1, y1, x2, y2, color1, 0.008 + Math.random() * 0.008, 2
+                        ));
+                        energyParticles.push(new EnergyParticle(
+                            x2, y2, x1, y1, color2, 0.008 + Math.random() * 0.008, 2
+                        ));
+                    }
+                }
+            }
+            
+            // Update and draw energy particles
+            energyParticles = energyParticles.filter(p => {
+                const dead = p.update();
+                if (!dead) p.draw(ctx);
+                return !dead;
+            });
+            
+            // Draw energy beams between spheres
+            for (let i = 0; i < windows.length; i++) {
+                for (let j = i + 1; j < windows.length; j++) {
+                    const win1 = windows[i];
+                    const win2 = windows[j];
+                    
+                    const x1 = win1.shape.x + win1.shape.width / 2 + offsetX;
+                    const y1 = win1.shape.y + win1.shape.height / 2 + offsetY;
+                    const x2 = win2.shape.x + win2.shape.width / 2 + offsetX;
+                    const y2 = win2.shape.y + win2.shape.height / 2 + offsetY;
+                    
+                    if ((x1 > -300 && x1 < width + 300 && y1 > -300 && y1 < height + 300) ||
+                        (x2 > -300 && x2 < width + 300 && y2 > -300 && y2 < height + 300)) {
+                        
+                        const gradient = ctx.createLinearGradient(x1, y1, x2, y2);
+                        const color1 = getWindowColor(i);
+                        const color2 = getWindowColor(j);
+                        
+                        gradient.addColorStop(0, color1.replace('60%', '40%'));
+                        gradient.addColorStop(0.5, 'rgba(255,255,255,0.15)');
+                        gradient.addColorStop(1, color2.replace('60%', '40%'));
+                        
+                        ctx.strokeStyle = gradient;
+                        ctx.lineWidth = 3;
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                    }
+                }
+            }
+            
+            // Draw each window's energy sphere
+            windows.forEach((win, index) => {
+                const centerX = win.shape.x + win.shape.width / 2 + offsetX;
+                const centerY = win.shape.y + win.shape.height / 2 + offsetY;
+                
+                if (centerX < -400 || centerX > width + 400 || centerY < -400 || centerY > height + 400) {
+                    return;
+                }
+                
+                const color = getWindowColor(index);
+                const isThisWindow = win.id === thisWindow.id;
+                
+                const baseRadius = Math.min(win.shape.width, win.shape.height) * 0.12;
+                
+                // Get or create particle system
+                const systemKey = win.id;
+                if (!sphereParticleSystems[systemKey]) {
+                    sphereParticleSystems[systemKey] = new SphereParticles(centerX, centerY, color, baseRadius);
+                }
+                
+                // Update and draw particles
+                sphereParticleSystems[systemKey].update(centerX, centerY);
+                sphereParticleSystems[systemKey].draw(ctx);
+                
+                // Draw multiple glow layers
+                for (let layer = 4; layer >= 0; layer--) {
+                    const pulse = Math.sin(time * 2 + index + layer * 0.7) * 0.12 + 1;
+                    const radius = baseRadius * (1 + layer * 0.5) * pulse;
+                    const alpha = 0.25 - layer * 0.04;
+                    
+                    const gradient = ctx.createRadialGradient(
+                        centerX, centerY, 0,
+                        centerX, centerY, radius
+                    );
+                    
+                    const hslMatch = color.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+                    const hue = hslMatch ? hslMatch[1] : 0;
+                    
+                    gradient.addColorStop(0, `hsla(${hue}, 80%, 85%, ${alpha})`);
+                    gradient.addColorStop(0.3, `hsla(${hue}, 80%, 60%, ${alpha * 0.6})`);
+                    gradient.addColorStop(0.7, `hsla(${hue}, 80%, 40%, ${alpha * 0.3})`);
+                    gradient.addColorStop(1, 'transparent');
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                // Core sphere with 3D effect
+                const coreGradient = ctx.createRadialGradient(
+                    centerX - baseRadius * 0.3, centerY - baseRadius * 0.3, 0,
+                    centerX, centerY, baseRadius
+                );
+                
+                const hslMatch = color.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+                const hue = hslMatch ? hslMatch[1] : 0;
+                
+                coreGradient.addColorStop(0, `hsla(${hue}, 60%, 95%, 1)`);
+                coreGradient.addColorStop(0.2, `hsla(${hue}, 80%, 75%, 1)`);
+                coreGradient.addColorStop(0.5, `hsla(${hue}, 80%, 55%, 1)`);
+                coreGradient.addColorStop(0.8, `hsla(${hue}, 80%, 40%, 0.9)`);
+                coreGradient.addColorStop(1, `hsla(${hue}, 80%, 20%, 0.7)`);
+                
+                ctx.fillStyle = coreGradient;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Outer energy ring
+                const ringPulse = Math.sin(time * 1.5 + index) * 0.08 + 1;
+                ctx.strokeStyle = `hsla(${hue}, 80%, 85%, 0.4)`;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, baseRadius * 1.4 * ringPulse, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                // Second ring
+                ctx.strokeStyle = `hsla(${hue}, 80%, 70%, 0.2)`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, baseRadius * 1.8 * ringPulse, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                // Window outline
+                ctx.strokeStyle = isThisWindow ? `hsla(${hue}, 80%, 60%, 0.6)` : 'rgba(255,255,255,0.1)';
+                ctx.lineWidth = isThisWindow ? 2 : 1;
+                ctx.strokeRect(
+                    win.shape.x + offsetX,
+                    win.shape.y + offsetY,
+                    win.shape.width,
+                    win.shape.height
+                );
+                
+                // Window label
+                ctx.fillStyle = '#fff';
+                ctx.font = '11px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText(
+                    `Window ${index + 1}${isThisWindow ? ' (You)' : ''}`,
+                    centerX,
+                    win.shape.y + offsetY + 16
+                );
+            });
+            
+            // Update UI
+            document.getElementById('winCount').textContent = windows.length;
+            document.getElementById('winId').textContent = thisWindow.id.slice(-8);
+            
+            requestAnimationFrame(animate);
+        }
+        
+        animate();
+        
+        document.getElementById('addWin').addEventListener('click', () => {
+            window.open(
+                window.location.href,
+                '_blank',
+                `width=${width * 0.8},height=${height * 0.8},left=${window.screenX + width + 50},top=${window.screenY}`
+            );
+        });
+        
+        document.getElementById('clear').addEventListener('click', () => {
+            localStorage.clear();
+            location.reload();
+        });
+        
+        sync.on('windowAdded', () => {
+            console.log('Window added');
+        });
+        
+        sync.on('windowRemoved', () => {
+            console.log('Window removed');
+        });
+    </script>
+</body>
+</html>

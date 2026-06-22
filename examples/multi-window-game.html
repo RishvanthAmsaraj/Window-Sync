@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WindowSync - Multi-Window Pong</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .ui {
+            position: relative;
+            z-index: 10;
+            text-align: center;
+            pointer-events: none;
+        }
+        
+        .ui > * {
+            pointer-events: auto;
+        }
+        
+        h1 {
+            font-size: 1.25rem;
+            margin-bottom: 0.5rem;
+            color: #FF6B35;
+        }
+        
+        .score {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 1rem 0;
+            font-family: monospace;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        button {
+            background: #FF6B35;
+            color: #fff;
+            border: none;
+            padding: 0.625rem 1.25rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        button:hover {
+            background: #e55a2b;
+        }
+        
+        button.secondary {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        button.secondary:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .instructions {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            opacity: 0.6;
+            font-size: 0.875rem;
+            max-width: 400px;
+            line-height: 1.5;
+        }
+        
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            display: none;
+        }
+        
+        .game-over h2 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game"></canvas>
+    
+    <div class="ui">
+        <h1>Multi-Window Pong</h1>
+        <div class="score" id="score">0 - 0</div>
+        <div class="controls">
+            <button id="btnAddWindow">Add Window (Player)</button>
+            <button id="btnStart">Start Game</button>
+            <button id="btnReset" class="secondary">Reset</button>
+        </div>
+        <div style="margin-top: 1rem; font-size: 0.75rem; opacity: 0.6;">
+            Windows: <span id="windowCount">1</span> | 
+            Status: <span id="gameStatus">Ready</span>
+        </div>
+    </div>
+    
+    <div class="game-over" id="gameOver">
+        <h2>Game Over</h2>
+        <p id="winner"></p>
+        <button id="btnPlayAgain">Play Again</button>
+    </div>
+    
+    <div class="instructions">
+        Open multiple windows. Each window is a player.<br>
+        Move mouse to control paddle. Ball travels between windows!
+    </div>
+
+    <script type="module">
+        import WindowSync from '../src/WindowSync.js';
+        
+        const sync = new WindowSync({ 
+            syncKey: 'window_sync_pong',
+            updateInterval: 50,
+            debug: false
+        });
+        
+        sync.init({ 
+            player: true, 
+            score: 0,
+            paddleY: 0
+        });
+        
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        
+        let gameState = sync.getState('game') || {
+            ball: { x: 0, y: 0, vx: 4, vy: 4, radius: 8 },
+            scores: {},
+            started: false,
+            gameOver: false,
+            winner: null
+        };
+        
+        let paddleHeight = 100;
+        let paddleWidth = 12;
+        let paddleY = 0;
+        let particles = [];
+        
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+        
+        // Mouse control
+        window.addEventListener('mousemove', (e) => {
+            paddleY = Math.max(0, Math.min(canvas.height - paddleHeight, e.clientY - paddleHeight / 2));
+            sync.updateMetadata({ paddleY: paddleY });
+        });
+        
+        // Touch control for mobile
+        window.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            paddleY = Math.max(0, Math.min(canvas.height - paddleHeight, touch.clientY - paddleHeight / 2));
+            sync.updateMetadata({ paddleY: paddleY });
+        }, { passive: false });
+        
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    life: 1,
+                    color: color
+                });
+            }
+        }
+        
+        function update() {
+            const win = sync.getThisWindow();
+            const wins = sync.getWindows();
+            
+            // Initialize scores for all windows
+            wins.forEach(w => {
+                if (gameState.scores[w.id] === undefined) {
+                    gameState.scores[w.id] = 0;
+                }
+            });
+            
+            // Update game status
+            const statusEl = document.getElementById('gameStatus');
+            if (statusEl) {
+                if (gameState.gameOver) {
+                    statusEl.textContent = 'Game Over';
+                } else if (gameState.started) {
+                    statusEl.textContent = 'Playing';
+                } else {
+                    statusEl.textContent = 'Ready - Click Start';
+                }
+            }
+            
+            if (gameState.started && !gameState.gameOver) {
+                // Update ball
+                gameState.ball.x += gameState.ball.vx;
+                gameState.ball.y += gameState.ball.vy;
+                
+                // Bounce off top/bottom of screen
+                if (gameState.ball.y <= gameState.ball.radius || 
+                    gameState.ball.y >= window.screen.height - gameState.ball.radius) {
+                    gameState.ball.vy *= -1;
+                    gameState.ball.y = Math.max(gameState.ball.radius, 
+                        Math.min(window.screen.height - gameState.ball.radius, gameState.ball.y));
+                }
+                
+                // Check paddle collisions
+                wins.forEach(w => {
+                    if (w.metadata.paddleY !== undefined) {
+                        const isRightSide = w.shape.x > window.screen.width / 2;
+                        const paddleX = isRightSide ? 
+                            w.shape.x + w.shape.width - 30 : 
+                            w.shape.x + 20;
+                        
+                        const paddleTop = w.shape.y + w.metadata.paddleY;
+                        const paddleBottom = paddleTop + paddleHeight;
+                        
+                        // Check if ball is near this window's paddle
+                        if (Math.abs(gameState.ball.x - paddleX) < 20 &&
+                            gameState.ball.y >= paddleTop && 
+                            gameState.ball.y <= paddleBottom) {
+                            
+                            gameState.ball.vx *= -1.05; // Speed up slightly
+                            gameState.ball.vx = Math.max(-15, Math.min(15, gameState.ball.vx)); // Cap speed
+                            createParticles(gameState.ball.x, gameState.ball.y, '#FF6B35');
+                        }
+                    }
+                });
+                
+                // Score when ball goes off screen
+                if (gameState.ball.x < -50) {
+                    // Ball went left - right side scores
+                    const rightWindows = wins.filter(w => w.shape.x > window.screen.width / 2);
+                    rightWindows.forEach(w => {
+                        gameState.scores[w.id] = (gameState.scores[w.id] || 0) + 1;
+                    });
+                    resetBall();
+                } else if (gameState.ball.x > window.screen.width + 50) {
+                    // Ball went right - left side scores
+                    const leftWindows = wins.filter(w => w.shape.x <= window.screen.width / 2);
+                    leftWindows.forEach(w => {
+                        gameState.scores[w.id] = (gameState.scores[w.id] || 0) + 1;
+                    });
+                    resetBall();
+                }
+                
+                // Check win condition
+                const maxScore = Math.max(...Object.values(gameState.scores));
+                if (maxScore >= 10) {
+                    gameState.gameOver = true;
+                    const winnerId = Object.keys(gameState.scores).find(
+                        id => gameState.scores[id] === maxScore
+                    );
+                    gameState.winner = winnerId;
+                }
+            }
+            
+            // Update particles
+            particles = particles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.life -= 0.02;
+                return p.life > 0;
+            });
+            
+            sync.setState('game', gameState);
+        }
+        
+        function resetBall() {
+            gameState.ball.x = window.screen.width / 2;
+            gameState.ball.y = window.screen.height / 2;
+            gameState.ball.vx = 4 * (Math.random() > 0.5 ? 1 : -1);
+            gameState.ball.vy = 4 * (Math.random() > 0.5 ? 1 : -1);
+        }
+        
+        function draw() {
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const win = sync.getThisWindow();
+            const wins = sync.getWindows();
+            
+            // Draw grid lines between windows
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.lineWidth = 1;
+            wins.forEach(w => {
+                if (w.id !== sync.getId()) {
+                    const relativeX = w.shape.x - win.shape.x;
+                    const relativeY = w.shape.y - win.shape.y;
+                    ctx.strokeRect(relativeX, relativeY, w.shape.width, w.shape.height);
+                }
+            });
+            
+            // Draw center line
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.setLineDash([10, 10]);
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Draw paddles for all windows
+            wins.forEach(w => {
+                if (w.metadata.paddleY !== undefined) {
+                    const relativeX = w.shape.x - win.shape.x;
+                    const relativeY = w.shape.y - win.shape.y;
+                    
+                    const isRightSide = w.shape.x > window.screen.width / 2;
+                    const paddleX = isRightSide ? 
+                        relativeX + w.shape.width - 30 : 
+                        relativeX + 20;
+                    
+                    ctx.fillStyle = w.id === sync.getId() ? '#FF6B35' : '#666';
+                    ctx.shadowColor = w.id === sync.getId() ? '#FF6B35' : 'transparent';
+                    ctx.shadowBlur = w.id === sync.getId() ? 20 : 0;
+                    
+                    // Draw paddle with rounded corners
+                    const paddleY = relativeY + w.metadata.paddleY;
+                    ctx.beginPath();
+                    ctx.roundRect(paddleX, paddleY, paddleWidth, paddleHeight, 6);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    
+                    // Draw score above paddle
+                    const score = gameState.scores[w.id] || 0;
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 1rem monospace';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(
+                        score.toString(),
+                        paddleX + paddleWidth / 2,
+                        paddleY - 10
+                    );
+                }
+            });
+            
+            // Draw ball
+            const ballScreenX = gameState.ball.x - win.shape.x;
+            const ballScreenY = gameState.ball.y - win.shape.y;
+            
+            if (ballScreenX > -50 && ballScreenX < canvas.width + 50 &&
+                ballScreenY > -50 && ballScreenY < canvas.height + 50) {
+                
+                ctx.fillStyle = '#fff';
+                ctx.shadowColor = '#fff';
+                ctx.shadowBlur = 15;
+                ctx.beginPath();
+                ctx.arc(ballScreenX, ballScreenY, gameState.ball.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+            
+            // Draw particles
+            particles.forEach(p => {
+                const px = p.x - win.shape.x;
+                const py = p.y - win.shape.y;
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fillRect(px - 2, py - 2, 4, 4);
+            });
+            ctx.globalAlpha = 1;
+            
+            // Draw game over screen
+            if (gameState.gameOver) {
+                const gameOverEl = document.getElementById('gameOver');
+                const winnerEl = document.getElementById('winner');
+                
+                if (gameState.winner === sync.getId()) {
+                    winnerEl.textContent = 'You Win!';
+                    winnerEl.style.color = '#44ff44';
+                } else {
+                    winnerEl.textContent = 'You Lose!';
+                    winnerEl.style.color = '#ff4444';
+                }
+                
+                gameOverEl.style.display = 'block';
+            }
+        }
+        
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+        
+        // Button event listeners
+        document.getElementById('btnAddWindow').addEventListener('click', () => {
+            console.log('Add window clicked');
+            const newWindow = window.open(
+                window.location.href, 
+                '_blank', 
+                'width=400,height=500,left=' + (window.screenX + 420) + ',top=' + window.screenY
+            );
+            if (!newWindow) {
+                alert('Please allow popups for this site');
+            } else {
+                console.log('Opened new window');
+            }
+        });
+        
+        document.getElementById('btnStart').addEventListener('click', () => {
+            console.log('Start game clicked');
+            if (!gameState.started) {
+                gameState.started = true;
+                resetBall();
+                sync.setState('game', gameState);
+                console.log('Game started!');
+            }
+        });
+        
+        document.getElementById('btnReset').addEventListener('click', () => {
+            gameState = {
+                ball: { x: window.screen.width / 2, y: window.screen.height / 2, vx: 4, vy: 4, radius: 8 },
+                scores: {},
+                started: false,
+                gameOver: false,
+                winner: null
+            };
+            sync.setState('game', gameState);
+            document.getElementById('gameOver').style.display = 'none';
+        });
+        
+        document.getElementById('btnPlayAgain').addEventListener('click', () => {
+            gameState = {
+                ball: { x: window.screen.width / 2, y: window.screen.height / 2, vx: 4, vy: 4, radius: 8 },
+                scores: {},
+                started: false,
+                gameOver: false,
+                winner: null
+            };
+            sync.setState('game', gameState);
+            document.getElementById('gameOver').style.display = 'none';
+        });
+        
+        // Listen for state changes
+        sync.on('stateChanged', ({ key }) => {
+            if (key === 'game') {
+                gameState = sync.getState('game');
+            }
+        });
+        
+        // Update window count display
+        function updateWindowCount() {
+            document.getElementById('windowCount').textContent = sync.getWindowCount();
+        }
+        
+        sync.on('windowAdded', () => {
+            updateWindowCount();
+            console.log('Window added! Total:', sync.getWindowCount());
+        });
+        
+        sync.on('windowRemoved', () => {
+            updateWindowCount();
+            console.log('Window removed! Total:', sync.getWindowCount());
+        });
+        
+        // Start game loop
+        updateWindowCount();
+        loop();
+    </script>
+</body>
+</html>

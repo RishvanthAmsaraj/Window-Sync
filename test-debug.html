@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WindowSync Debug Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            padding: 2rem;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        button {
+            background: #FF6B35;
+            color: #fff;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 0.25rem;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        .section {
+            margin: 1.5rem 0;
+            padding: 1rem;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+        }
+        h2 {
+            color: #FF6B35;
+            margin-top: 0;
+        }
+        #output {
+            padding: 1rem;
+            background: rgba(0,0,0,0.3);
+            border-radius: 4px;
+            font-family: monospace;
+            min-height: 200px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-size: 0.9rem;
+        }
+        .pass { color: #4f4; }
+        .fail { color: #f44; }
+        .info { color: #FF6B35; }
+        .warn { color: #ffcc00; }
+        .debug { color: #88ccff; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        th, td {
+            text-align: left;
+            padding: 0.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        th {
+            color: #FF6B35;
+        }
+    </style>
+</head>
+<body>
+    <h1>WindowSync Debug Test</h1>
+    
+    <div class="section">
+        <h2>Environment Info</h2>
+        <table id="envTable">
+            <tr><th>Property</th><th>Value</th></tr>
+        </table>
+    </div>
+    
+    <div class="section">
+        <h2>Controls</h2>
+        <button id="btnInit">1. Initialize WindowSync</button>
+        <button id="btnOpen" disabled>2. Open Second Window</button>
+        <button id="btnCheck" disabled>3. Check Sync Status</button>
+        <button id="btnBroadcast" disabled>4. Test Broadcast</button>
+        <button id="btnStress" disabled>5. Stress Test (10 messages)</button>
+        <button id="btnClear">Clear Log</button>
+    </div>
+    
+    <div class="section">
+        <h2>Live Status</h2>
+        <div id="status">Not initialized</div>
+    </div>
+    
+    <div class="section">
+        <h2>Event Log</h2>
+        <div id="output"></div>
+    </div>
+
+    <script src="dist/window-sync.js"></script>
+    <script>
+        const output = document.getElementById('output');
+        const statusDiv = document.getElementById('status');
+        let sync;
+        let messageCount = 0;
+        let receivedCount = 0;
+        
+        // Environment info
+        const envTable = document.getElementById('envTable');
+        const envData = [
+            ['User Agent', navigator.userAgent],
+            ['BroadcastChannel Support', typeof BroadcastChannel !== 'undefined' ? 'Yes' : 'No'],
+            ['localStorage Support', typeof localStorage !== 'undefined' ? 'Yes' : 'No'],
+            ['Window Opener', window.opener ? 'Yes (popup)' : 'No (main)'],
+            ['Protocol', window.location.protocol],
+            ['Origin', window.location.origin],
+            ['Page URL', window.location.href]
+        ];
+        
+        envData.forEach(([key, value]) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${key}</td><td>${value}</td>`;
+            envTable.appendChild(row);
+        });
+        
+        function log(msg, type = 'info') {
+            const span = document.createElement('span');
+            span.className = type;
+            const time = new Date().toLocaleTimeString();
+            span.textContent = `[${time}] ${msg}\n`;
+            output.appendChild(span);
+            output.scrollTop = output.scrollHeight;
+            console.log(`[WindowSync Debug] ${msg}`);
+        }
+        
+        function updateStatus() {
+            if (!sync) {
+                statusDiv.textContent = 'Not initialized';
+                return;
+            }
+            
+            const windows = sync.getWindows();
+            const thisWindow = sync.getThisWindow();
+            
+            let html = `
+                <strong>Window ID:</strong> ${sync.getId().slice(-8)}<br>
+                <strong>Window Count:</strong> ${sync.getWindowCount()}<br>
+                <strong>Is Leader:</strong> ${sync.isLeader()}<br>
+                <strong>Window Name:</strong> ${thisWindow?.metadata?.name || 'N/A'}<br>
+                <strong>Messages Sent:</strong> ${messageCount}<br>
+                <strong>Messages Received:</strong> ${receivedCount}<br>
+                <hr style="border-color: rgba(255,255,255,0.1); margin: 0.5rem 0;">
+                <strong>All Windows:</strong><br>
+            `;
+            
+            windows.forEach(w => {
+                const isSelf = w.id === sync.getId();
+                html += `• ${w.id.slice(-8)} ${isSelf ? '(YOU)' : ''} - ${w.metadata?.name || 'Unnamed'}<br>`;
+            });
+            
+            statusDiv.innerHTML = html;
+        }
+        
+        // Auto-update status every 500ms
+        setInterval(updateStatus, 500);
+        
+        document.getElementById('btnInit').addEventListener('click', () => {
+            output.innerHTML = '';
+            log('=== Initializing WindowSync ===');
+            
+            if (typeof WindowSync !== 'function') {
+                log('FAIL: WindowSync not found', 'fail');
+                return;
+            }
+            
+            try {
+                sync = new WindowSync({ 
+                    syncKey: 'debug_test', 
+                    debug: true 
+                });
+                
+                // Set up event listeners BEFORE init
+                sync.on('windowAdded', (data) => {
+                    log(`EVENT: windowAdded - ${data.window.id.slice(-8)}`, 'info');
+                });
+                
+                sync.on('windowRemoved', (data) => {
+                    log(`EVENT: windowRemoved - ${data.window.id.slice(-8)}`, 'warn');
+                });
+                
+                sync.on('stateChanged', (data) => {
+                    log(`EVENT: stateChanged - key: ${data.key}`, 'debug');
+                });
+                
+                sync.on('debug-message', (data) => {
+                    receivedCount++;
+                    log(`EVENT: debug-message from ${data.from.slice(-8)}: ${data.content}`, 'pass');
+                });
+                
+                sync.init({ name: window.opener ? 'Popup' : 'Main' });
+                
+                log('PASS: WindowSync initialized', 'pass');
+                log(`Window ID: ${sync.getId()}`);
+                log(`BroadcastChannel: ${typeof BroadcastChannel !== 'undefined' ? 'Yes' : 'No (using localStorage)'}`);
+                
+                // Enable other buttons
+                document.getElementById('btnOpen').disabled = false;
+                document.getElementById('btnCheck').disabled = false;
+                document.getElementById('btnBroadcast').disabled = false;
+                document.getElementById('btnStress').disabled = false;
+                
+            } catch (err) {
+                log(`FAIL: ${err.message}`, 'fail');
+                console.error(err);
+            }
+        });
+        
+        document.getElementById('btnOpen').addEventListener('click', () => {
+            log('\n=== Opening Second Window ===');
+            
+            const newWindow = window.open(window.location.href, '_blank', 'width=700,height=600');
+            
+            if (newWindow) {
+                log('PASS: Window opened', 'pass');
+                log('Waiting for popup to initialize...', 'info');
+                
+                // Poll for the new window to appear
+                let attempts = 0;
+                const maxAttempts = 20;
+                
+                const pollInterval = setInterval(() => {
+                    attempts++;
+                    const count = sync.getWindowCount();
+                    log(`Poll ${attempts}/${maxAttempts}: ${count} window(s)`, 'debug');
+                    
+                    if (count >= 2) {
+                        log('PASS: Second window detected!', 'pass');
+                        clearInterval(pollInterval);
+                    } else if (attempts >= maxAttempts) {
+                        log('FAIL: Second window not detected after 10s', 'fail');
+                        log('Troubleshooting tips:', 'warn');
+                        log('1. Check popup loaded fully (not blocked)', 'warn');
+                        log('2. Check browser console in popup for errors', 'warn');
+                        log('3. Try clicking "Initialize" in popup window', 'warn');
+                        log('4. Some browsers block cross-window communication', 'warn');
+                        clearInterval(pollInterval);
+                    }
+                }, 500);
+                
+            } else {
+                log('FAIL: Popup blocked by browser', 'fail');
+            }
+        });
+        
+        document.getElementById('btnCheck').addEventListener('click', () => {
+            log('\n=== Manual Sync Check ===');
+            const count = sync.getWindowCount();
+            const windows = sync.getWindows();
+            
+            log(`Window count: ${count}`);
+            windows.forEach(w => {
+                const isSelf = w.id === sync.getId();
+                log(`  - ${w.id.slice(-8)} ${isSelf ? '(YOU)' : ''} | ${w.metadata?.name || 'Unnamed'} | lastSeen: ${new Date(w.lastSeen).toLocaleTimeString()}`, isSelf ? 'info' : 'pass');
+            });
+        });
+        
+        document.getElementById('btnBroadcast').addEventListener('click', () => {
+            log('\n=== Testing Broadcast ===');
+            
+            const msg = {
+                content: 'Test message ' + Date.now(),
+                from: sync.getId(),
+                timestamp: Date.now()
+            };
+            
+            sync.broadcast('debug-message', msg);
+            messageCount++;
+            log(`Sent broadcast: ${msg.content}`, 'info');
+            
+            setTimeout(() => {
+                if (sync.getWindowCount() === 1) {
+                    log('Note: Only 1 window detected - broadcast only works locally', 'warn');
+                }
+            }, 100);
+        });
+        
+        document.getElementById('btnStress').addEventListener('click', () => {
+            log('\n=== Stress Test (10 messages) ===');
+            
+            for (let i = 0; i < 10; i++) {
+                setTimeout(() => {
+                    sync.broadcast('debug-message', {
+                        content: `Stress test ${i + 1}/10`,
+                        from: sync.getId(),
+                        timestamp: Date.now()
+                    });
+                    messageCount++;
+                }, i * 100);
+            }
+            
+            log('Sent 10 messages over 1 second', 'info');
+        });
+        
+        document.getElementById('btnClear').addEventListener('click', () => {
+            output.innerHTML = '';
+        });
+        
+        // If this is a popup, auto-initialize
+        if (window.opener) {
+            log('Popup detected - auto-initializing in 1 second...', 'info');
+            setTimeout(() => {
+                document.getElementById('btnInit').click();
+            }, 1000);
+        }
+    </script>
+</body>
+</html>

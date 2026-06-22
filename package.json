@@ -1,0 +1,44 @@
+{
+  "name": "window-sync",
+  "version": "1.1.1",
+  "description": "A lightweight library for synchronizing state across multiple browser windows/tabs using BroadcastChannel with localStorage fallback",
+  "main": "dist/window-sync.js",
+  "module": "dist/window-sync.esm.js",
+  "types": "dist/window-sync.d.ts",
+  "files": [
+    "dist/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "test": "jest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "window",
+    "sync",
+    "localStorage",
+    "multi-window",
+    "browser",
+    "cross-window",
+    "state",
+    "synchronization"
+  ],
+  "author": "Rishvanth Amsaraj",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RishvanthAmsaraj/window-sync.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RishvanthAmsaraj/window-sync/issues"
+  },
+  "homepage": "https://github.com/RishvanthAmsaraj/window-sync#readme",
+  "devDependencies": {
+    "@rollup/plugin-terser": "^0.4.4",
+    "rollup": "^4.62.2"
+  }
+}

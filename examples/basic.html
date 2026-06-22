@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WindowSync - Basic Example</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            padding: 2rem;
+            min-height: 100vh;
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: #FF6B35;
+        }
+        
+        .subtitle {
+            opacity: 0.6;
+            margin-bottom: 2rem;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .panel {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        
+        .panel h2 {
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+            opacity: 0.8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.875rem;
+        }
+        
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            opacity: 0.6;
+        }
+        
+        .info-value {
+            font-family: monospace;
+            color: #FF6B35;
+        }
+        
+        .windows-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .window-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 1rem;
+            transition: border-color 0.3s;
+        }
+        
+        .window-card.active {
+            border-color: #FF6B35;
+            background: rgba(255,107,53,0.05);
+        }
+        
+        .window-card h3 {
+            font-size: 0.875rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #444;
+        }
+        
+        .window-card.active .status-dot {
+            background: #FF6B35;
+        }
+        
+        .window-card p {
+            font-size: 0.75rem;
+            opacity: 0.6;
+            font-family: monospace;
+            margin: 0.25rem 0;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            background: #FF6B35;
+            color: #fff;
+            border: none;
+            padding: 0.625rem 1.25rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        button:hover {
+            background: #e55a2b;
+        }
+        
+        button.secondary {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        button.secondary:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .log {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .log-entry {
+            padding: 0.25rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            opacity: 0.8;
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .state-demo {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+        }
+        
+        .state-demo input {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #fff;
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin-right: 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .state-display {
+            margin-top: 0.75rem;
+            font-family: monospace;
+            font-size: 0.75rem;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <h1>WindowSync</h1>
+    <p class="subtitle">Cross-window state synchronization library</p>
+    
+    <div class="grid">
+        <div class="panel">
+            <h2>This Window</h2>
+            <div class="info-row">
+                <span class="info-label">ID</span>
+                <span class="info-value" id="windowId">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Position</span>
+                <span class="info-value" id="position">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Size</span>
+                <span class="info-value" id="size">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Leader</span>
+                <span class="info-value" id="leader">-</span>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Sync Pool</h2>
+            <div class="info-row">
+                <span class="info-label">Total Windows</span>
+                <span class="info-value" id="totalWindows">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Your Windows</span>
+                <span class="info-value" id="yourWindows">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Last Update</span>
+                <span class="info-value" id="lastUpdate">-</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="actions">
+        <button onclick="openNewWindow()">Open New Window</button>
+        <button class="secondary" onclick="broadcastMessage()">Broadcast Message</button>
+        <button class="secondary" onclick="clearLog()">Clear Log</button>
+    </div>
+    
+    <div class="state-demo">
+        <h2 style="font-size: 0.875rem; margin-bottom: 0.75rem;">Shared State Demo</h2>
+        <input type="text" id="stateKey" placeholder="Key" value="theme">
+        <input type="text" id="stateValue" placeholder="Value" value="dark">
+        <button onclick="setSharedState()">Set State</button>
+        <button class="secondary" onclick="getSharedState()">Get State</button>
+        <div class="state-display" id="stateDisplay">No state set</div>
+    </div>
+    
+    <h2 style="margin-top: 2rem; font-size: 1rem;">Active Windows</h2>
+    <div class="windows-grid" id="windows"></div>
+    
+    <h2 style="margin-top: 2rem; font-size: 1rem;">Event Log</h2>
+    <div class="log" id="log"></div>
+
+    <script type="module">
+        import WindowSync from '../src/WindowSync.js';
+        
+        const sync = new WindowSync({ 
+            syncKey: 'window_sync_demo',
+            debug: false
+        });
+        
+        sync.init({ 
+            name: 'Demo Window', 
+            openedAt: new Date().toLocaleTimeString(),
+            userAgent: navigator.userAgent.slice(0, 50)
+        });
+        
+        // Update UI
+        function updateInfo() {
+            const win = sync.getThisWindow();
+            document.getElementById('windowId').textContent = win.id.slice(-8);
+            document.getElementById('position').textContent = `${win.shape.x}, ${win.shape.y}`;
+            document.getElementById('size').textContent = `${win.shape.width}x${win.shape.height}`;
+            document.getElementById('leader').textContent = sync.isLeader() ? 'Yes' : 'No';
+            document.getElementById('totalWindows').textContent = sync.getWindowCount();
+            document.getElementById('yourWindows').textContent = sync.getWindows().filter(w => w.id === sync.getId()).length;
+            document.getElementById('lastUpdate').textContent = new Date(win.lastSeen).toLocaleTimeString();
+        }
+        
+        function updateWindows() {
+            const container = document.getElementById('windows');
+            container.innerHTML = '';
+            
+            sync.getWindows().forEach(w => {
+                const card = document.createElement('div');
+                card.className = 'window-card' + (w.id === sync.getId() ? ' active' : '');
+                card.innerHTML = `
+                    <h3>
+                        <span class="status-dot"></span>
+                        ${w.id === sync.getId() ? 'This Window' : 'Window ' + w.id.slice(-4)}
+                        ${sync.isLeader() && w.id === sync.getId() ? ' (Leader)' : ''}
+                    </h3>
+                    <p>Position: ${w.shape.x}, ${w.shape.y}</p>
+                    <p>Size: ${w.shape.width}x${w.shape.height}</p>
+                    <p>Screen: ${w.shape.screenWidth}x${w.shape.screenHeight}</p>
+                    <p>Opened: ${w.metadata.openedAt || 'Unknown'}</p>
+                `;
+                container.appendChild(card);
+            });
+        }
+        
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.style.color = type === 'error' ? '#ff4444' : type === 'success' ? '#44ff44' : '';
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logEl.insertBefore(entry, logEl.firstChild);
+            
+            // Keep only last 50 entries
+            while (logEl.children.length > 50) {
+                logEl.removeChild(logEl.lastChild);
+            }
+        }
+        
+        // Event listeners
+        sync.on('windowAdded', ({ window }) => {
+            log(`Window added: ${window.id.slice(-8)}`);
+            updateWindows();
+            updateInfo();
+        });
+        
+        sync.on('windowRemoved', ({ window }) => {
+            log(`Window removed: ${window.id.slice(-8)}`);
+            updateWindows();
+            updateInfo();
+        });
+        
+        sync.on('windowMoved', ({ window }) => {
+            updateInfo();
+        });
+        
+        sync.on('windowResized', ({ window }) => {
+            log(`Window resized: ${window.shape.width}x${window.shape.height}`);
+            updateInfo();
+        });
+        
+        sync.on('stateChanged', ({ key, value, windowId }) => {
+            log(`State changed: ${key} = ${JSON.stringify(value)} (by ${windowId.slice(-8)})`);
+            updateStateDisplay();
+        });
+        
+        sync.on('message', (data, fromId) => {
+            log(`Message from ${fromId.slice(-8)}: ${data.text}`, 'success');
+        });
+        
+        // Global functions
+        window.openNewWindow = () => {
+            const newWindow = window.open(window.location.href, '_blank', 'width=800,height=600');
+            if (!newWindow) {
+                log('Popup blocked! Please allow popups for this site.', 'error');
+            }
+        };
+        
+        window.broadcastMessage = () => {
+            sync.broadcast('message', { 
+                text: 'Hello from window ' + sync.getId().slice(-4),
+                timestamp: Date.now()
+            });
+            log('Broadcasted message');
+        };
+        
+        window.clearLog = () => {
+            document.getElementById('log').innerHTML = '';
+        };
+        
+        window.setSharedState = () => {
+            const key = document.getElementById('stateKey').value;
+            const value = document.getElementById('stateValue').value;
+            if (key) {
+                sync.setState(key, value);
+                log(`Set state: ${key} = ${value}`);
+            }
+        };
+        
+        window.getSharedState = () => {
+            const key = document.getElementById('stateKey').value;
+            const value = sync.getState(key);
+            log(`Get state: ${key} = ${JSON.stringify(value)}`);
+        };
+        
+        function updateStateDisplay() {
+            const state = sync.getAllState();
+            document.getElementById('stateDisplay').textContent = 
+                Object.keys(state).length > 0 
+                    ? JSON.stringify(state, null, 2)
+                    : 'No state set';
+        }
+        
+        // Initial update
+        updateInfo();
+        updateWindows();
+        updateStateDisplay();
+        log('WindowSync initialized');
+        
+        // Update position display
+        setInterval(updateInfo, 100);
+    </script>
+</body>
+</html>

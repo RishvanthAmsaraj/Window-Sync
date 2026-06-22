@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WindowSync Debug</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #0a0a0a;
+            color: #0f0;
+            padding: 2rem;
+        }
+        button {
+            background: #333;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 1rem;
+            margin: 0.5rem;
+            cursor: pointer;
+            font-family: monospace;
+        }
+        #output {
+            margin-top: 2rem;
+            white-space: pre-wrap;
+            border: 1px solid #333;
+            padding: 1rem;
+            min-height: 300px;
+        }
+    </style>
+</head>
+<body>
+    <h1>WindowSync Debug</h1>
+    <button id="btn1">Test 1: Check WindowSync</button>
+    <button id="btn2">Test 2: Create Instance</button>
+    <button id="btn3">Test 3: Open Window</button>
+    <button id="btn4">Test 4: Clear</button>
+    <div id="output"></div>
+
+    <script src="../dist/window-sync.js"></script>
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(msg) {
+            output.textContent += msg + '\n';
+            console.log(msg);
+        }
+        
+        document.getElementById('btn1').addEventListener('click', () => {
+            log('=== Test 1: Check WindowSync ===');
+            if (typeof WindowSync === 'undefined') {
+                log('FAIL: WindowSync is undefined');
+            } else {
+                log('PASS: WindowSync is defined');
+                log('Type: ' + typeof WindowSync);
+            }
+        });
+        
+        document.getElementById('btn2').addEventListener('click', () => {
+            log('=== Test 2: Create Instance ===');
+            try {
+                const sync = new WindowSync({ syncKey: 'debug_test' });
+                log('PASS: Created WindowSync instance');
+                log('ID: ' + sync.getId().slice(-8));
+                
+                sync.init({ test: true });
+                log('PASS: Initialized');
+                log('Windows: ' + sync.getWindowCount());
+                
+                window.testSync = sync;
+                log('Stored in window.testSync');
+            } catch (err) {
+                log('FAIL: ' + err.message);
+                log(err.stack);
+            }
+        });
+        
+        document.getElementById('btn3').addEventListener('click', () => {
+            log('=== Test 3: Open Window ===');
+            const newWindow = window.open(window.location.href, '_blank', 'width=400,height=400');
+            if (newWindow) {
+                log('PASS: Window opened');
+            } else {
+                log('FAIL: Window blocked or failed');
+            }
+        });
+        
+        document.getElementById('btn4').addEventListener('click', () => {
+            output.textContent = '';
+            log('Cleared');
+        });
+        
+        // Auto-run check on load
+        log('Page loaded');
+        log('WindowSync defined: ' + (typeof WindowSync !== 'undefined'));
+    </script>
+</body>
+</html>

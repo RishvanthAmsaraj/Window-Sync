@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WindowSync Final Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            padding: 2rem;
+        }
+        button {
+            background: #FF6B35;
+            color: #fff;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin: 0.5rem;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        #output {
+            margin-top: 2rem;
+            padding: 1rem;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            font-family: monospace;
+            min-height: 300px;
+            white-space: pre-wrap;
+        }
+        .pass { color: #4f4; }
+        .fail { color: #f44; }
+        .info { color: #FF6B35; }
+        .warn { color: #ffcc00; }
+        #status {
+            margin: 1rem 0;
+            padding: 1rem;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+        }
+        .window-list {
+            margin: 0.5rem 0;
+            padding-left: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>WindowSync Final Test v1.1.1</h1>
+    <div id="status">
+        <strong>Status:</strong> <span id="statusText">Not initialized</span>
+        <div class="window-list" id="windowList"></div>
+    </div>
+    <button id="btnTest1">Test 1: Initialize</button>
+    <button id="btnTest2" disabled>Test 2: Open Window & Sync</button>
+    <button id="btnTest3" disabled>Test 3: Broadcast</button>
+    <button id="btnCheck" disabled>Check Windows</button>
+    <button id="btnClear">Clear Log</button>
+    <div id="output"></div>
+
+    <script src="dist/window-sync.js"></script>
+    <script>
+        const output = document.getElementById('output');
+        const statusText = document.getElementById('statusText');
+        const windowList = document.getElementById('windowList');
+        let sync;
+        
+        function log(msg, type = 'info') {
+            const span = document.createElement('span');
+            span.className = type;
+            span.textContent = msg + '\n';
+            output.appendChild(span);
+            console.log(msg);
+        }
+        
+        function updateStatus() {
+            if (!sync) {
+                statusText.textContent = 'Not initialized';
+                windowList.innerHTML = '';
+                return;
+            }
+            
+            const count = sync.getWindowCount();
+            const windows = sync.getWindows();
+            const isLeader = sync.isLeader();
+            
+            statusText.innerHTML = `${count} window(s) | Leader: ${isLeader} | ID: ${sync.getId().slice(-8)}`;
+            
+            let listHtml = '';
+            windows.forEach(w => {
+                const isSelf = w.id === sync.getId();
+                const age = Math.round((Date.now() - w.lastSeen) / 1000);
+                listHtml += `<div>• ${w.id.slice(-8)} ${isSelf ? '(YOU)' : ''} - ${w.metadata?.name || 'Unnamed'} - ${age}s ago</div>`;
+            });
+            windowList.innerHTML = listHtml || '<div>No windows detected</div>';
+        }
+        
+        // Update status every 500ms
+        setInterval(updateStatus, 500);
+        
+        document.getElementById('btnTest1').addEventListener('click', () => {
+            output.innerHTML = '';
+            log('=== Test 1: Initialize WindowSync ===');
+            
+            if (typeof WindowSync !== 'function') {
+                log('FAIL: WindowSync not found', 'fail');
+                return;
+            }
+            
+            log('PASS: WindowSync is defined', 'pass');
+            log('BroadcastChannel support: ' + (typeof BroadcastChannel !== 'undefined'));
+            
+            sync = new WindowSync({ syncKey: 'final_test_v3', debug: true });
+            
+            // Set up listeners BEFORE init
+            sync.on('windowAdded', (data) => {
+                log(`EVENT: windowAdded - ${data.window.id.slice(-8)}`, 'pass');
+            });
+            
+            sync.on('windowRemoved', (data) => {
+                log(`EVENT: windowRemoved - ${data.window.id.slice(-8)}`, 'warn');
+            });
+            
+            sync.init({ name: window.opener ? 'Popup' : 'Main' });
+            
+            log('PASS: Instance created', 'pass');
+            log('Window ID: ' + sync.getId());
+            log('Initial window count: ' + sync.getWindowCount());
+            
+            // Enable other tests
+            document.getElementById('btnTest2').disabled = false;
+            document.getElementById('btnTest3').disabled = false;
+            document.getElementById('btnCheck').disabled = false;
+        });
+        
+        document.getElementById('btnTest2').addEventListener('click', () => {
+            if (!sync) {
+                log('Please run Test 1 first', 'fail');
+                return;
+            }
+            
+            log('\n=== Test 2: Open Window & Sync ===');
+            log('Opening new window...');
+            
+            const newWindow = window.open(window.location.href, '_blank', 'width=600,height=500');
+            
+            if (newWindow) {
+                log('PASS: Window opened', 'pass');
+                log('Monitoring for sync (checking every 500ms for 10s)...', 'info');
+                
+                let attempts = 0;
+                const maxAttempts = 20;
+                let found = false;
+                
+                const checkInterval = setInterval(() => {
+                    attempts++;
+                    const count = sync.getWindowCount();
+                    
+                    if (count >= 2) {
+                        log(`PASS: Sync working! Found ${count} windows at attempt ${attempts}`, 'pass');
+                        found = true;
+                        clearInterval(checkInterval);
+                    } else if (attempts >= maxAttempts) {
+                        if (!found) {
+                            log(`FAIL: Sync not working. Only ${count} window(s) after 10s`, 'fail');
+                            log('Troubleshooting:', 'warn');
+                            log('- Check browser console for errors', 'warn');
+                            log('- Make sure popup loaded fully', 'warn');
+                            log('- Try running Test 1 in the popup too', 'warn');
+                        }
+                        clearInterval(checkInterval);
+                    }
+                }, 500);
+                
+            } else {
+                log('FAIL: Popup blocked', 'fail');
+            }
+        });
+        
+        document.getElementById('btnTest3').addEventListener('click', () => {
+            if (!sync) {
+                log('Please run Test 1 first', 'fail');
+                return;
+            }
+            
+            log('\n=== Test 3: Broadcast ===');
+            let receivedCount = 0;
+            
+            sync.on('test', (data) => {
+                receivedCount++;
+                log(`PASS: Received broadcast #${receivedCount}: ${JSON.stringify(data)}`, 'pass');
+            });
+            
+            const msg = { message: 'Hello!', time: Date.now() };
+            sync.broadcast('test', msg);
+            log('Broadcast sent: ' + JSON.stringify(msg));
+            
+            setTimeout(() => {
+                const windowCount = sync.getWindowCount();
+                if (windowCount === 1) {
+                    log('Note: Only 1 window - broadcast works locally only', 'info');
+                } else if (receivedCount === 0) {
+                    log(`WARN: ${windowCount} windows but no broadcast received from others`, 'warn');
+                }
+            }, 100);
+        });
+        
+        document.getElementById('btnCheck').addEventListener('click', () => {
+            if (!sync) {
+                log('Please run Test 1 first', 'fail');
+                return;
+            }
+            
+            log('\n=== Manual Window Check ===');
+            const count = sync.getWindowCount();
+            const windows = sync.getWindows();
+            
+            log(`Window count: ${count}`);
+            windows.forEach(w => {
+                const isSelf = w.id === sync.getId();
+                log(`  - ${w.id.slice(-8)} ${isSelf ? '(YOU)' : ''} | ${w.metadata?.name || 'Unnamed'}`, isSelf ? 'info' : 'pass');
+            });
+        });
+        
+        document.getElementById('btnClear').addEventListener('click', () => {
+            output.innerHTML = '';
+        });
+        
+        // Auto-run test 1 on load if we're a popup
+        window.addEventListener('load', () => {
+            if (window.opener) {
+                log('Popup detected. Click "Test 1: Initialize" to join sync pool.');
+            } else {
+                log('Page loaded. Click "Test 1: Initialize" to begin.');
+            }
+        });
+    </script>
+</body>
+</html>

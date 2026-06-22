@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WindowSync - Quick Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0a0a;
+            color: #fff;
+            padding: 2rem;
+            min-height: 100vh;
+        }
+        
+        h1 {
+            color: #FF6B35;
+            margin-bottom: 1rem;
+        }
+        
+        .test-section {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .test-section h2 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            opacity: 0.8;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        
+        .status.pass {
+            background: rgba(68, 255, 68, 0.2);
+            color: #4f4;
+        }
+        
+        .status.fail {
+            background: rgba(255, 68, 68, 0.2);
+            color: #f44;
+        }
+        
+        .status.pending {
+            background: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+        }
+        
+        button {
+            background: #FF6B35;
+            color: #fff;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 1rem;
+            font-size: 0.875rem;
+        }
+        
+        button:hover {
+            background: #e55a2b;
+        }
+        
+        .info {
+            font-family: monospace;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+            opacity: 0.7;
+        }
+        
+        .window-list {
+            margin-top: 1rem;
+        }
+        
+        .window-item {
+            padding: 0.5rem;
+            background: rgba(255,255,255,0.03);
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+            font-family: monospace;
+            font-size: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>WindowSync Test</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Library Load</h2>
+        <span class="status pending" id="loadStatus">Testing...</span>
+        <div class="info" id="loadInfo"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 2: Initialization</h2>
+        <span class="status pending" id="initStatus">Testing...</span>
+        <div class="info" id="initInfo"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 3: Window Tracking</h2>
+        <span class="status pending" id="trackStatus">Testing...</span>
+        <div class="info" id="trackInfo"></div>
+        <div class="window-list" id="windowList"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 4: State Sync</h2>
+        <span class="status pending" id="stateStatus">Testing...</span>
+        <div class="info" id="stateInfo"></div>
+        <button onclick="testState()">Test State Sync</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Test 5: Event Broadcast</h2>
+        <span class="status pending" id="eventStatus">Testing...</span>
+        <div class="info" id="eventInfo"></div>
+        <button onclick="testBroadcast()">Test Broadcast</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Multi-Window Test</h2>
+        <p style="opacity: 0.7; margin-bottom: 1rem;">Open this page in multiple windows to see sync in action.</p>
+        <button onclick="openNewWindow()">Open New Window</button>
+        <div class="info" id="multiInfo"></div>
+    </div>
+
+    <script type="module">
+        import WindowSync from './src/WindowSync.js';
+        
+        let sync;
+        
+        // Test 1: Library Load
+        function testLoad() {
+            const status = document.getElementById('loadStatus');
+            const info = document.getElementById('loadInfo');
+            
+            try {
+                if (typeof WindowSync === 'function') {
+                    status.className = 'status pass';
+                    status.textContent = 'PASS';
+                    info.textContent = 'WindowSync class loaded successfully';
+                    return true;
+                } else {
+                    throw new Error('WindowSync not found');
+                }
+            } catch (err) {
+                status.className = 'status fail';
+                status.textContent = 'FAIL';
+                info.textContent = err.message;
+                return false;
+            }
+        }
+        
+        // Test 2: Initialization
+        function testInit() {
+            const status = document.getElementById('initStatus');
+            const info = document.getElementById('initInfo');
+            
+            try {
+                sync = new WindowSync({ 
+                    syncKey: 'window_sync_test',
+                    debug: true 
+                });
+                sync.init({ test: true, time: Date.now() });
+                
+                if (sync.getId() && sync.getThisWindow()) {
+                    status.className = 'status pass';
+                    status.textContent = 'PASS';
+                    info.textContent = `Window ID: ${sync.getId().slice(-8)} | Windows: ${sync.getWindowCount()}`;
+                    return true;
+                } else {
+                    throw new Error('Initialization failed');
+                }
+            } catch (err) {
+                status.className = 'status fail';
+                status.textContent = 'FAIL';
+                info.textContent = err.message;
+                return false;
+            }
+        }
+        
+        // Test 3: Window Tracking
+        function testTracking() {
+            const status = document.getElementById('trackStatus');
+            const info = document.getElementById('trackInfo');
+            
+            try {
+                const win = sync.getThisWindow();
+                if (win.shape.x !== undefined && win.shape.y !== undefined) {
+                    status.className = 'status pass';
+                    status.textContent = 'PASS';
+                    info.textContent = `Position: ${win.shape.x}, ${win.shape.y} | Size: ${win.shape.width}x${win.shape.height}`;
+                    
+                    updateWindowList();
+                    return true;
+                } else {
+                    throw new Error('Window shape not tracked');
+                }
+            } catch (err) {
+                status.className = 'status fail';
+                status.textContent = 'FAIL';
+                info.textContent = err.message;
+                return false;
+            }
+        }
+        
+        function updateWindowList() {
+            const list = document.getElementById('windowList');
+            const windows = sync.getWindows();
+            
+            list.innerHTML = windows.map(w => `
+                <div class="window-item">
+                    ${w.id === sync.getId() ? 'THIS WINDOW' : 'Other Window'} 
+                    (${w.id.slice(-8)}) - 
+                    Pos: ${w.shape.x}, ${w.shape.y} | 
+                    Size: ${w.shape.width}x${w.shape.height}
+                </div>
+            `).join('');
+        }
+        
+        // Test 4: State Sync
+        window.testState = () => {
+            const status = document.getElementById('stateStatus');
+            const info = document.getElementById('stateInfo');
+            
+            try {
+                sync.setState('test_key', 'test_value_' + Date.now());
+                const value = sync.getState('test_key');
+                
+                if (value && value.startsWith('test_value_')) {
+                    status.className = 'status pass';
+                    status.textContent = 'PASS';
+                    info.textContent = `State set and retrieved: ${value}`;
+                } else {
+                    throw new Error('State not persisted');
+                }
+            } catch (err) {
+                status.className = 'status fail';
+                status.textContent = 'FAIL';
+                info.textContent = err.message;
+            }
+        };
+        
+        // Test 5: Event Broadcast
+        window.testBroadcast = () => {
+            const status = document.getElementById('eventStatus');
+            const info = document.getElementById('eventInfo');
+            
+            try {
+                let received = false;
+                sync.on('test_event', (data) => {
+                    received = true;
+                    info.textContent = `Received: ${JSON.stringify(data)}`;
+                });
+                
+                sync.broadcast('test_event', { message: 'Hello from test!', time: Date.now() });
+                
+                setTimeout(() => {
+                    if (received) {
+                        status.className = 'status pass';
+                        status.textContent = 'PASS';
+                    } else {
+                        status.className = 'status fail';
+                        status.textContent = 'FAIL';
+                        info.textContent = 'Event not received';
+                    }
+                }, 100);
+            } catch (err) {
+                status.className = 'status fail';
+                status.textContent = 'FAIL';
+                info.textContent = err.message;
+            }
+        };
+        
+        // Multi-window test
+        window.openNewWindow = () => {
+            const newWindow = window.open(window.location.href, '_blank', 'width=600,height=400');
+            if (!newWindow) {
+                alert('Please allow popups for this site');
+            }
+        };
+        
+        // Listen for window changes
+        sync?.on('windowAdded', () => {
+            updateWindowList();
+            document.getElementById('multiInfo').textContent = 
+                `Total windows: ${sync.getWindowCount()}`;
+        });
+        
+        sync?.on('windowRemoved', () => {
+            updateWindowList();
+            document.getElementById('multiInfo').textContent = 
+                `Total windows: ${sync.getWindowCount()}`;
+        });
+        
+        // Run tests
+        setTimeout(() => {
+            testLoad();
+            setTimeout(() => {
+                testInit();
+                setTimeout(() => {
+                    testTracking();
+                }, 100);
+            }, 100);
+        }, 100);
+        
+        // Update window list periodically
+        setInterval(updateWindowList, 500);
+    </script>
+</body>
+</html>
